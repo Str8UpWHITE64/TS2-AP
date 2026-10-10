@@ -439,6 +439,19 @@ def set_skip_intro(on: bool) -> None:
         dme.write_bytes(mm.SKIP_INTRO_FLAG, want)
 
 
+def sway_patch_present() -> bool:
+    try:
+        return u32(mm.SWAY_HOOK_ADDR) == mm.SWAY_HOOK_APPLIED
+    except Exception:
+        return False
+
+
+def set_no_sway(on: bool) -> None:
+    want = b"\x01" if on else b"\x00"
+    if dme.read_bytes(mm.NO_SWAY_FLAG, 1) != want:
+        dme.write_bytes(mm.NO_SWAY_FLAG, want)
+
+
 def mark_intro_seen(profile: int, level: int) -> bool:
     """Unlock a story level's intro in the cinematics gallery, as playing it would have.
     True when the bit was new."""

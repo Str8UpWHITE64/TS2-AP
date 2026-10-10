@@ -88,6 +88,10 @@ INTRO_CUTSCENE_OF_LEVEL = {0x23: 1, 0x14: 2, 0x22: 3, 0x28: 4, 0x26: 5, 0x20: 6,
 SKIP_INTRO_FLAG = 0x80002FF8
 SKIP_INTRO_HOOK_ADDR = 0x80187728
 SKIP_INTRO_HOOK_APPLIED = 0x4BF837D9   # bl <cave at 0x8010AF00>
+# 1 = no view/gun sway (patcher SWAY_*), from the seed's disable_weapon_sway. Zero at boot.
+NO_SWAY_FLAG = 0x80002FF9
+SWAY_HOOK_ADDR = 0x8004EA94
+SWAY_HOOK_APPLIED = 0x480F7F38         # b <cave at 0x801469CC>
 TAIL_UNLOCK_OFF = GAMEDATA_OFF + 0x1198     # 5 dwords, ends at GAMEDATA_SIZE
 
 # --- do NOT use for checks -------------------------------------------------

@@ -120,6 +120,8 @@ The template yaml from the Launcher lists every option with its choices.
   share of the new gun's maximum it would have given the old one. Enemies carry shuffled guns too, and use them
   as the gun they now hold.
 - **Skip Intro Cutscenes**: on by default; turn it off to watch each mission's intro.
+- **Disable Weapon Sway**: off by default; turn it on to stop the slow drift of your view and gun, standing
+  still or moving. Recoil is unchanged.
 - **Health, Armor and Ammo Packs**: one-time refills from the multiworld, applied as soon as you are in a level.
 - **Traps**: each switches on a TimeSplitters 2 cheat (big heads, fat enemies, cardboard characters, ...) for
   30 seconds during a story mission, one at a time. Traps received elsewhere wait for your next mission.

@@ -46,7 +46,7 @@ from .. import patcher as patch_iso
 from . import gamestate
 
 GAME = "TimeSplitters 2"
-SLOT_DATA_VERSION = 12
+SLOT_DATA_VERSION = 13
 POLL_INTERVAL = 0.4
 
 # Routine detail (objectives, gating, the shuffle) goes to the log file only: the window
@@ -219,6 +219,7 @@ class TS2GCContext(CommonContext):
         self.weapon_patched = False
         self.skip_patched = False
         self.ammo_patched = False
+        self.sway_patched = False
         self.reported_patch_state = False
         self.warned_about_writing = False
         self.objectives = gamestate.ObjectiveWatcher()
@@ -670,6 +671,7 @@ class TS2GCContext(CommonContext):
                     w32(address, words[w] if tier == 1 else 0)
 
         self.apply_intro_skip(profile)
+        gamestate.set_no_sway(bool(self.slot_data.get("disable_weapon_sway")))
         self.apply_weapons()
         self.apply_weapon_gating()
         self.apply_preferences(profile)
@@ -1080,6 +1082,7 @@ async def game_loop(ctx: TS2GCContext):
             ctx.weapon_patched = gamestate.weapon_patch_present()
             ctx.skip_patched = gamestate.skip_intro_patch_present()
             ctx.ammo_patched = gamestate.ammo_patch_present()
+            ctx.sway_patched = gamestate.sway_patch_present()
             # A story map outside Story mode is Arcade (they share level ids). Said
             # once per level so a wrong mode value would show up in the first test.
             level = gamestate.MISSION_OF_LEVEL.get(u32(mm.CURRENT_LEVEL_ADDR))
@@ -1093,7 +1096,7 @@ async def game_loop(ctx: TS2GCContext):
             if not ctx.reported_patch_state:
                 ctx.reported_patch_state = True
                 if (ctx.story_patched and ctx.arcade_patched and ctx.weapon_patched and ctx.skip_patched
-                        and ctx.ammo_patched):
+                        and ctx.ammo_patched and ctx.sway_patched):
                     note("Fully patched image: every mission and match can be locked.")
                 else:
                     missing = []
@@ -1108,6 +1111,8 @@ async def game_loop(ctx: TS2GCContext):
                         missing.append("intro cutscenes cannot be skipped")
                     if not ctx.ammo_patched:
                         missing.append("a shuffled gun's pickups keep the replaced gun's amounts")
+                    if not ctx.sway_patched:
+                        missing.append("weapon sway cannot be turned off")
                     logger.warning("Partly stock image -- %s. Close Dolphin and restart this client: "
                                    "it patches a copy of the disc for you.", "; and ".join(missing))
 

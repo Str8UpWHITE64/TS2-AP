@@ -175,6 +175,12 @@ class SkipIntroCutscenes(DefaultOnToggle):
     display_name = "Skip Intro Cutscenes"
 
 
+class DisableWeaponSway(Toggle):
+    """Turns off the slow sway of your view and gun, both while standing still (breathing) and while moving.
+    Recoil when firing is unchanged. Needs the patched disc, which the client writes for you."""
+    display_name = "Disable Weapon Sway"
+
+
 class InverseLook(Toggle):
     """GameCube preference: Inverse Look. Written to your profile the first time the client sees it, so a new
     profile starts the way you want without a trip through the Preferences screen. Anything you change in the game
@@ -238,6 +244,7 @@ class TS2Options(PerGameCommonOptions):
     weapon_shuffle: WeaponShuffle
     weapon_shuffle_scope: WeaponShuffleScope
     skip_intro_cutscenes: SkipIntroCutscenes
+    disable_weapon_sway: DisableWeaponSway
     inverse_look: InverseLook
     auto_lookahead: AutoLookahead
     weapon_change: WeaponChange

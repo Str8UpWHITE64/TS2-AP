@@ -500,6 +500,43 @@ AMMO_PATCHES = [
 ]
 
 
+# --- weapon sway: switched off by the client's flag ----------------------------
+# FUN_8004DDB0 also runs the view's sway (the "breathing" that drifts the view and
+# gun, larger while moving). The camera struct at [r13-0x77b4] holds two phases
+# (+0x180/+0x184) and an amplitude (+0x17c); each frame the two offsets
+#     +0x188 = 0.5 * amplitude * sin(phase0)    +0x18c = amplitude * sin(phase1)
+# are added to the view. The amplitude is taken into f31, which starts at 0, and the
+# game skips that load itself while the camera's flag 0x4 is set:
+#     8004ea8c  rlwinm. r0, r0, 0, 29, 29
+#     8004ea90  bne     8004ea98
+#     8004ea94  lfs     f31, 0x17c(r3)
+# The load becomes a jump into a cave that also skips it while the byte at 0x80002FF9
+# is set, which the client does from the seed's disable_weapon_sway option. Both
+# offsets are then 0. The flag is zero at boot, so without the client nothing changes.
+#
+# THE CAVE sits in FUN_8014699C, the dead function that holds the arcade and weapon
+# caves, between the arcade cave (which ends in an unconditional branch) and the
+# control bits. Nothing branches into that range and no data word names it.
+SWAY_HOOK = 0x8004EA94
+SWAY_CAVE = 0x801469CC
+SWAY_CAVE_ORIGINAL = [0x3C004330, 0x90010008, 0x6C638000, 0xC822AD98, 0x9061000C, 0xC042AD84, 0xC8010008]
+SWAY_CAVE_CODE = [
+    0x3C608000,   # lis     r3, 0x8000
+    0x88032FF9,   # lbz     r0, 0x2ff9(r3)             the client's flag
+    0x806D884C,   # lwz     r3, -0x77b4(r13)           the camera again, as the site had it
+    0x2C000000,   # cmpwi   r0, 0
+    0x40820008,   # bne     +8                         set: leave the amplitude at 0
+    0xC3E3017C,   # lfs     f31, 0x17c(r3)             the load this jump replaced
+    0x4BF080B4,   # b       0x8004EA98
+]
+SWAY_PATCHES = [
+    (SWAY_HOOK, [0xC3E3017C], [0x480F7F38],                              # lfs f31,0x17c(r3) -> b <cave>
+     "sway: the sway amplitude is read through the cave"),
+    (SWAY_CAVE, SWAY_CAVE_ORIGINAL, SWAY_CAVE_CODE,
+     "cave: no view or gun sway while the client's flag is set"),
+]
+
+
 PATCHES = [
     STORY_FIRST_MISSION,
     (0x8013EC84, [0x38600001], [0x48007D18],
@@ -519,7 +556,7 @@ PATCHES = [
      "Story mounts gun.pak and sounds.pak like Arcade does (the mounts)"),
     SKIP_INTRO_CAVE,
     SKIP_INTRO_HOOK,
-] + ENEMY_GUN_PATCHES + AMMO_PATCHES
+] + ENEMY_GUN_PATCHES + AMMO_PATCHES + SWAY_PATCHES
 
 
 # --- optional: mouse look (--mouse) ---------------------------------------------

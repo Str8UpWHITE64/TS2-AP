@@ -33,13 +33,13 @@ LEGACY_MODE_SETS = {LEGACY_BOTH: frozenset(MODE_NAMES),
 # client re-applies the weapon tables on every level load, so the same slot can be a different gun per level.
 SCOPE_COMPLETELY_RANDOM, SCOPE_SAME_CLASS, SCOPE_WITHIN_LEVEL = 0, 1, 2
 # slot_data schema version. Bump whenever the KEYS the client reads change, so a mismatched client can say so
-# instead of silently mis-reading a seed. 12 = added skip_intro_cutscenes.
+# instead of silently mis-reading a seed. 13 = added disable_weapon_sway. 12 = added skip_intro_cutscenes.
 # 11 = added preferences (GameCube profile preferences). 10 = game_mode (int) replaced by game_modes / story_content /
 # goal_trophy_events / trophy_goal_*; the client still reads the old int so pre-1.0.2 seeds keep working. 9 = added
 # arcade_death_link_threshold. 8 = added starting_units / starting_weapons (a Universal Tracker regen must restore the
 # seed's starters rather than re-roll them). 7 = added game_mode / arcade_goal_* / weapon_shuffle_scope /
 # weapon_remap_by_level (6 = the pre-1.0.0 schema, which used the old content_mode key).
-SLOT_DATA_VERSION = 12
+SLOT_DATA_VERSION = 13
 
 # Smallest Time Crystal gate the density clamp is allowed to leave behind. The clamp scales the gate down to what a
 # seed's free locations can hold, and on the tightest Story layout (Story-only, Easy, gating on) that bottoms out here.
@@ -596,6 +596,7 @@ class TS2World(World):
             "weapon_item_base": data.WEAPON_ITEM_ID_BASE,
             "weapon_shuffle_scope": self.scope,               # 0=completely_random 1=same_class 2=within_level
             "skip_intro_cutscenes": bool(self.options.skip_intro_cutscenes.value),
+            "disable_weapon_sway": bool(self.options.disable_weapon_sway.value),
             # GameCube-only: profile preferences the client writes once per profile (options.py explains why)
             "preferences": {"inverse_look": int(self.options.inverse_look.value),
                             "auto_lookahead": int(self.options.auto_lookahead.value),

@@ -57,6 +57,7 @@ See `options.py` for the full text of each. Weapon Gating and Weapon Shuffle app
 | `weapon_shuffle` | toggle | off | swaps what each weapon is (pickups, your loadout, and enemy weapons) |
 | `weapon_shuffle_scope` | completely_random / same_class / within_level | completely_random | how far a swap may reach |
 | `skip_intro_cutscenes` | toggle | on | story missions start without their intro cutscene; it still unlocks in the gallery |
+| `disable_weapon_sway` | toggle | off | no slow drift of the view and gun, standing still or moving; recoil is unchanged |
 | `bonus_health_packs` | 0–30 | 3 | one-time full-health refills in the pool |
 | `bonus_armor_packs` | 0–30 | 3 | one-time full-armor refills |
 | `bonus_ammo_packs` | 0–30 | 3 | one-time refills of every carried weapon's ammo |
