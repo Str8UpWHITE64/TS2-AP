@@ -200,6 +200,11 @@ WEAPON_PATCH_APPLIED = 0x48086809                 # bl <cave>
 PAK_MOUNT_PATCH_ADDRS = (0x801BFD64, 0x801BFDE4)
 PAK_MOUNT_PATCH_STOCK = 0x4182000C                # beq <story-only mounts>
 PAK_MOUNT_PATCH_APPLIED = 0x60000000              # nop
+# Pickups of a shuffled gun sized for it (patcher AMMO_*): the item spawner's amount
+# multiply calls the cave.
+AMMO_PATCH_ADDR = 0x800D9110
+AMMO_PATCH_STOCK = 0x7EC4B9D6                     # mullw r22, r4, r23
+AMMO_PATCH_APPLIED = 0x48031E01                   # bl <cave>
 
 # --- weapons ----------------------------------------------------------------
 # The gun table: one entry per weapon identity. Entry N is the weapon the apworld
@@ -268,8 +273,8 @@ LOAD_FLAGS_ADDR = 0x803D0AF0
 LOAD_FLAGS_NOT_STORY = 0x08000040
 
 # Gun-Stats records, indexed by the gun table's +0x08 / +0x0C. Recorded for the
-# ammo fields, which the Ammo Pack refill reads. A shuffled-in gun deliberately
-# draws on the ammo supply of the gun it replaces (see TESTING.md).
+# ammo fields, which the Ammo Pack refill reads. A shuffled-in gun fires its own
+# ammo type up to its own max; the patched disc sizes its pickups (patcher AMMO_*).
 STATS_TABLE = 0x8030B6F0
 STATS_STRIDE = 0x240
 STATS_AMMO_TYPE = 0x10
@@ -293,9 +298,12 @@ PAWN_CURRENT_STATS = 0x440        # that weapon's Gun-Stats index
 # Rifle flips exactly slot 11; the only flags set beforehand are slot 0 (fists) and
 # slot 36 (Temporal Uplink), which is precisely the loadout every mission starts
 # with; and every entry reads 0 or 1. The PC build keeps the same array at +0x1000.
+# 42 entries, one per gun table slot: the game saves and restores exactly 0xA8 bytes
+# here, and the ammo array starts right after it.
 PAWN_WEAPON_OWNED = 0x994
-PAWN_WEAPON_OWNED_COUNT = 44
-# Ammo carried, one dword per ammo type (a Sniper Rifle pickup -- type 4 -- moved +0xA4C).
+PAWN_WEAPON_OWNED_COUNT = 42
+# Reserve ammo, one dword per ammo type (AMMO_TYPE_COUNT of them). Rounds in the
+# magazines are kept apart, per hand: +0x444 (right) / +0x104 (left) + type * 4.
 PAWN_AMMO = 0xA3C
 
 # A real weapon switch sets all three of these together. +0x100/+0x440 are the pawn's

@@ -453,6 +453,14 @@ def mark_intro_seen(profile: int, level: int) -> bool:
     return True
 
 
+def ammo_patch_present() -> bool:
+    """True when the patch that sizes a shuffled gun's pickups for it is in memory."""
+    try:
+        return u32(mm.AMMO_PATCH_ADDR) == mm.AMMO_PATCH_APPLIED
+    except Exception:
+        return False
+
+
 def weapon_patch_present():
     """True when both halves of the weapon patch are in memory: the precache hook
     and the pak mounts that let Story find guns from other levels."""
@@ -500,9 +508,8 @@ def clear_ungranted_weapons(pawn, allowed):
     for slot in range(1, mm.PAWN_WEAPON_OWNED_COUNT):
         if slot in allowed:
             continue
-        # Entries past the 38 real weapons are not weapons at all -- slot 43's flag
-        # lights up on AMMO pickups. Clearing it every poll was cancelling ammo the
-        # moment it was collected. Anything AP does not manage is left alone.
+        # Only the weapons AP manages. (When the count was 44, "slot 43" was really
+        # the pistol ammo after the array, and clearing it cancelled every pickup.)
         if slot not in data.WEAPONS:
             continue
         addr = pawn + mm.PAWN_WEAPON_OWNED + slot * 4
@@ -700,123 +707,6 @@ def profile_has_progress(profile: int) -> bool:
     if any(story_counter(profile, level) for level in data.STORY_LEVEL_ID):
         return True
     return any(u32(profile + off) for off in mm.STORY_CLEAR_OFF.values())
-
-
-# --- ammo under the weapon shuffle -------------------------------------------------------
-# A level's weapon pickups carry their amounts from the level's own data, sized for the
-# gun the level was built around, while the type and the cap come from the gun table --
-# the shuffled-in gun's own. So a Minigun in a pistol's place gets pistol-sized pickups.
-# AmmoScaler turns each gain into the same share of the shuffled-in gun's maximum.
-def _native_types(tables: bytes, slot: int) -> typing.List[typing.Tuple[int, int]]:
-    """(primary, alt-fire) ammo types slot fires in the pristine tables, one pair per hand."""
-    out = []
-    for hand in (mm.GUN_RIGHT_STATS, mm.GUN_LEFT_STATS):
-        at = slot * mm.GUN_STRIDE + hand
-        stats = int.from_bytes(tables[at:at + 4], "big")
-        if stats == mm.GUN_NONE or stats >= 0x80:
-            continue
-        base = mm.STATS_TABLE + stats * mm.STATS_STRIDE
-        pair = (u32(base + mm.STATS_AMMO_TYPE), u32(base + mm.STATS_ALT_AMMO_TYPE))
-        if pair not in out:
-            out.append(pair)
-    return out
-
-
-def ammo_max(kind: int) -> int:
-    if not 0 < kind < mm.AMMO_TYPE_COUNT:
-        return 0
-    return u32(mm.AMMO_TYPE_TABLE + kind * mm.AMMO_TYPE_STRIDE + mm.AMMO_TYPE_MAX)
-
-
-def ammo_scale(remap: typing.Dict[int, int], level_slots) -> typing.Dict[int, typing.Tuple[int, float]]:
-    """{ammo type gained: (type to credit, factor)} for one level's shuffle.
-
-    For each shuffled slot X -> Y and each of its (X type, Y type) pairs:
-      * Y's type, fired by X alone in this level, gains max(Y)/max(X) per round --
-        the pickups that fill it were sized for X;
-      * X's type, fired by nothing in this level any more, is turned into Y's at the
-        same rate, so X's own ammo pickups still feed the gun in X's place.
-    A type two of the level's guns fire is left alone: its gains cannot be told apart.
-    Needs the pristine tables from the weapon block; empty without them.
-    """
-    if not remap or not WeaponBlock.present():
-        return {}
-    tables = dme.read_bytes(mm.WPN_BLOCK + mm.WPN_BLOCK_PRISTINE, mm.GUN_TABLES_LEN)
-    fires: typing.Dict[int, typing.Set[int]] = {}          # ammo type -> slots firing it now
-    for slot in level_slots:
-        for pair in _native_types(tables, remap.get(slot, slot)):
-            for kind in pair:
-                if kind:
-                    fires.setdefault(kind, set()).add(slot)
-    out = {}
-    for slot, target in sorted(remap.items()):
-        if slot == target or slot not in level_slots:
-            continue
-        for pair_x, pair_y in zip(_native_types(tables, slot), _native_types(tables, target)):
-            for tx, ty in zip(pair_x, pair_y):
-                if not tx or not ty or tx == ty or not ammo_max(tx) or not ammo_max(ty):
-                    continue
-                factor = ammo_max(ty) / ammo_max(tx)
-                if fires.get(ty) == {slot}:
-                    out.setdefault(ty, (ty, factor))
-                if not fires.get(tx):
-                    out.setdefault(tx, (ty, factor))
-    return out
-
-
-class AmmoScaler:
-    """Apply ammo_scale to the player's gains, poll by poll. Losses (firing, reloading)
-    pass as they are; fractions carry over, so ten gains worth 0.4 each still come to four.
-
-    A pawn first seen right after a load is scaled from zero, since what it holds was
-    handed out by the level. One already there when the client started is taken as it
-    is: an earlier client scaled it.
-    """
-
-    def __init__(self):
-        self.pawn = None
-        self.watched_load = False
-        self.last: typing.List[int] = []
-        self.carry: typing.Dict[int, float] = {}
-
-    def reset(self):
-        """No player (a load, or the front end): the next pawn is a fresh one."""
-        self.pawn = None
-        self.watched_load = True
-
-    def rebase(self, pawn: int):
-        """Take the pawn's ammo as it is now -- after a change that is not a pickup (an
-        Ammo Pack), so the next poll does not scale it."""
-        if pawn == self.pawn:
-            raw = dme.read_bytes(pawn + mm.PAWN_AMMO, mm.AMMO_TYPE_COUNT * 4)
-            self.last = [int.from_bytes(raw[i * 4:i * 4 + 4], "big", signed=True) for i in range(mm.AMMO_TYPE_COUNT)]
-
-    def poll(self, pawn: int, scale: typing.Dict[int, typing.Tuple[int, float]]) -> int:
-        raw = dme.read_bytes(pawn + mm.PAWN_AMMO, mm.AMMO_TYPE_COUNT * 4)
-        now = [int.from_bytes(raw[i * 4:i * 4 + 4], "big", signed=True) for i in range(mm.AMMO_TYPE_COUNT)]
-        if pawn != self.pawn:
-            fresh = self.watched_load
-            self.pawn, self.carry, self.watched_load = pawn, {}, False
-            self.last = [0] * mm.AMMO_TYPE_COUNT if fresh else list(now)
-        want = list(now)
-        for kind, (credit, factor) in scale.items():
-            gain = now[kind] - self.last[kind]
-            if gain <= 0:
-                continue
-            if credit != kind:
-                want[kind] = self.last[kind]                # nothing fires it here: move it over
-            share = gain * factor + self.carry.get(credit, 0.0)
-            whole = int(share)
-            self.carry[credit] = share - whole
-            base = want[credit] - (gain if credit == kind else 0)
-            want[credit] = max(0, min(base + whole, ammo_max(credit)))
-        changed = 0
-        for kind in range(mm.AMMO_TYPE_COUNT):
-            if want[kind] != now[kind]:
-                w32(pawn + mm.PAWN_AMMO + kind * 4, want[kind])
-                changed += 1
-        self.last = want
-        return changed
 
 
 # Weapons used straight from their ammo -- placed mines, TNT and the Brick. Taking the

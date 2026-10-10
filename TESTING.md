@@ -46,17 +46,19 @@ launches the game fresh. The client says so when it loses the game or the Dolphi
 
 **Story, Arcade and Challenge.** The Challenges set on story maps run in Story's game mode, so the client and the
 gun precache tell Story apart by the load's flags as well (a Story start sets neither the Arcade nor the Challenge
-flag). Weapon gating, the weapon shuffle, traps and the ammo scaling apply in story missions only; DeathLink and
-the bonus packs apply everywhere. Story sends every death; Arcade and Challenge send one per
+flag). Weapon gating, the weapon shuffle with its pickup amounts, and traps apply in story missions only; DeathLink
+and the bonus packs apply everywhere. Story sends every death; Arcade and Challenge send one per
 `arcade_death_link_threshold` deaths. A death received waits until the player is on foot, and plays out through
 the game's own death sequence.
 
 **Weapon shuffle.** The client writes the seed's shuffle once, with a pristine copy of the gun tables, into the
 weapon block; the patched disc applies it as each story level loads. Restarting only the client is safe: a later
-client takes the pristine tables from the block, not from the live ones. A level's weapon pickups take their
-amounts from the level's own data, sized for the gun the level was built around, so the client scales the
-player's ammo gains to the shuffled-in gun: a gain of g rounds is worth g * max(new) / max(old), fractions
-carried. Losses, Ammo Packs and a restarted client are never scaled.
+client takes the pristine tables from the block, not from the live ones. A shuffled-in gun fires its own ammo
+up to its own maximum. A level's gun pickups and ammo boxes are sized for the gun the level was built around, so
+the patched disc resizes them as the level builds them: a pickup gives the same share of the new gun's maximum
+that it gave of the old gun's (rounded up), counting the old gun's two-handed doubling, and alt-fire likewise
+when both guns have one. Pickups the level gives no ammo stay empty. Firing, reloading, switching guns and Ammo
+Packs are left to the game.
 
 **One profile per seed.** The client follows the profile that is loaded, and only the one that belongs to the
 seed: a tag in the last word of the Platinum medal bitfield (bits no event uses), a hash of the seed name, team

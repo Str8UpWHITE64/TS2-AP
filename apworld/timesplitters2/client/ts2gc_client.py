@@ -218,6 +218,7 @@ class TS2GCContext(CommonContext):
         self.arcade_patched = False
         self.weapon_patched = False
         self.skip_patched = False
+        self.ammo_patched = False
         self.reported_patch_state = False
         self.warned_about_writing = False
         self.objectives = gamestate.ObjectiveWatcher()
@@ -250,9 +251,6 @@ class TS2GCContext(CommonContext):
         self.pending_profile = None        # tagged on the last poll, confirmed on this one
         self.force_profile = None          # /use_profile
         self.profile_said = None
-        # ammo under the weapon shuffle
-        self.ammo_scaler = gamestate.AmmoScaler()
-        self.ammo_scale_for = None         # (mission, scale) computed for the level loaded
 
     def run_gui(self):
         """The standard Archipelago client window (connection box, log, command bar), plus a
@@ -674,7 +672,6 @@ class TS2GCContext(CommonContext):
         self.apply_intro_skip(profile)
         self.apply_weapons()
         self.apply_weapon_gating()
-        self.scale_ammo()
         self.apply_preferences(profile)
 
         # On a patched image each match additionally has to be granted outright, which
@@ -722,28 +719,6 @@ class TS2GCContext(CommonContext):
             changed = sum(len(remap) for remap in rows.values())
             note("Weapon shuffle handed to the game: %d remapped slot(s) across %d "
                         "missions; it takes effect as each mission loads.", changed, len(rows))
-
-    def scale_ammo(self):
-        """Under the shuffle, turn ammo gains into the shuffled-in gun's share (gamestate.ammo_scale)."""
-        mission = gamestate.current_mission()
-        pawn = gamestate.player_pawn() if mission is not None else None
-        if (pawn is None or self.read_only or not self.slot_data.get("weapon_shuffle")
-                or not self.weapon_patched):
-            self.ammo_scaler.reset()
-            self.ammo_scale_for = None
-            return
-        if self.ammo_scale_for is None or self.ammo_scale_for[0] != mission:
-            level = data.STORY_LEVEL_ID[mission]
-            remap = gamestate.WeaponBlock.rows(self.weapon_remap, self.weapon_remap_by_level).get(level, {})
-            scale = gamestate.ammo_scale(remap, data.LEVEL_WEAPON_SLOTS.get(data.STORY[mission], ()))
-            self.ammo_scale_for = (mission, scale)
-            if scale:
-                note("Ammo for %s: %s.", data.STORY[mission], ", ".join(
-                    "type %#x x%.2f" % (kind, factor) if credit == kind else
-                    "type %#x -> %#x x%.2f" % (kind, credit, factor)
-                    for kind, (credit, factor) in sorted(scale.items())))
-        if self.ammo_scale_for[1]:
-            self.ammo_scaler.poll(pawn, self.ammo_scale_for[1])
 
     def allowed_weapon_slots(self) -> typing.Set[int]:
         """Slots the player may currently hold.
@@ -997,8 +972,6 @@ class TS2GCContext(CommonContext):
                                                ("Ammo", gamestate.refill_ammo))):
             if counts["packs"][kind] < self.packs_received[kind]:
                 refill(player)
-                if refill is gamestate.refill_ammo:
-                    self.ammo_scaler.rebase(player.pawn)
                 counts["packs"][kind] = self.packs_received[kind]
                 changed = True
                 logger.info("%s Pack applied.", name)
@@ -1106,6 +1079,7 @@ async def game_loop(ctx: TS2GCContext):
             ctx.arcade_patched = gamestate.arcade_patch_present()
             ctx.weapon_patched = gamestate.weapon_patch_present()
             ctx.skip_patched = gamestate.skip_intro_patch_present()
+            ctx.ammo_patched = gamestate.ammo_patch_present()
             # A story map outside Story mode is Arcade (they share level ids). Said
             # once per level so a wrong mode value would show up in the first test.
             level = gamestate.MISSION_OF_LEVEL.get(u32(mm.CURRENT_LEVEL_ADDR))
@@ -1118,7 +1092,8 @@ async def game_loop(ctx: TS2GCContext):
                          "no story checks, gating or shuffle here")
             if not ctx.reported_patch_state:
                 ctx.reported_patch_state = True
-                if ctx.story_patched and ctx.arcade_patched and ctx.weapon_patched and ctx.skip_patched:
+                if (ctx.story_patched and ctx.arcade_patched and ctx.weapon_patched and ctx.skip_patched
+                        and ctx.ammo_patched):
                     note("Fully patched image: every mission and match can be locked.")
                 else:
                     missing = []
@@ -1131,6 +1106,8 @@ async def game_loop(ctx: TS2GCContext):
                         missing.append("weapons cannot be shuffled")
                     if not ctx.skip_patched:
                         missing.append("intro cutscenes cannot be skipped")
+                    if not ctx.ammo_patched:
+                        missing.append("a shuffled gun's pickups keep the replaced gun's amounts")
                     logger.warning("Partly stock image -- %s. Close Dolphin and restart this client: "
                                    "it patches a copy of the disc for you.", "; and ".join(missing))
 

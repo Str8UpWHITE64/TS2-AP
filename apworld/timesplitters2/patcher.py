@@ -366,6 +366,140 @@ ENEMY_GUN_SITES = [
 ENEMY_GUN_PATCHES = [(ram, original, patched, "enemies: " + what)
                      for ram, original, patched, what in ENEMY_GUN_SITES]
 
+# --- weapon shuffle, part four: pickups sized for the gun now in the slot ------
+# A level's gun pickups and ammo boxes take their ammo type and its cap from the gun
+# table, so after the shuffle they fill the new gun Y. Their amount is the level's
+# preset, sized for the gun X the level was built around (or, for a preset of -1,
+# Y's own default), doubled when the slot's gun is two-handed. So a Pistol in the
+# Minigun's place got the Minigun's 300 rounds, capped at the pistol's 60.
+#
+# FUN_800D8AA0 builds the pickups; for each gun pickup / ammo box it multiplies the
+# (primary, alt) amounts by the dual factor at 0x800D9110 / 0x800D9114. The first
+# multiply becomes a call into the cave and the second a nop. The cave does both
+# multiplies, then, in a story load (the weapon cave's mode and flags test) with the
+# weapon block present and the slot's gun swapped (its pristine Gun-Stats pair from
+# the block differs from the live one), makes each amount
+#     X's amount (preset, or X's own default) * X's dual factor * max(Y type) / max(X type)
+# rounded up: the same share of Y's max that the pickup gave of X's. Alt-fire
+# likewise when both guns have one; anything else keeps the stock amount. Every story
+# pickup, difficulty and gun was run through the game's own code with the cave
+# hooked in, against a model of that formula. The cave writes no memory and uses
+# only volatile registers plus r22/r23, the two results it replaces.
+#
+# THE CAVE sits in FUN_8010AE1C, the dead function that holds the mouse and intro-skip
+# caves, after the intro-skip cave's blr: nothing outside the function branches into
+# it, no data word or lis/addi pair names an address in it (its only data references
+# are its own jump table), and the intro-skip cave ends in blr, so nothing falls in.
+AMMO_HOOK = 0x800D9110
+AMMO_CAVE = 0x8010AF10
+
+AMMO_CAVE_CODE = [
+    0x7EC4B9D6,   # mullw   r22, r4, r23               the two multiplies this call replaced
+    0x7EE0B9D6,   # mullw   r23, r0, r23
+    0x3C608000,   # lis     r3, 0x8000
+    0x60631800,   # ori     r3, r3, 0x1800             r3 = the client's weapon block
+    0x80A30000,   # lwz     r5, 0(r3)
+    0x3CC05453,   # lis     r6, 0x5453
+    0x60C63241,   # ori     r6, r6, 0x3241             'TS2A'
+    0x7C053000,   # cmpw    r5, r6
+    0x40820120,   # bne     done                       no block: stock amounts
+    0x3CC0803D,   # lis     r6, 0x803d
+    0x80A60AE4,   # lwz     r5, 0xae4(r6)              game mode
+    0x2C050004,   # cmpwi   r5, 4
+    0x40820110,   # bne     done
+    0x80A60AF0,   # lwz     r5, 0xaf0(r6)              load flags, the weapon cave's test
+    0x74A70800,   # andis.  r7, r5, 0x0800             Challenge
+    0x40820104,   # bne     done
+    0x70A70040,   # andi.   r7, r5, 0x40               Arcade
+    0x408200FC,   # bne     done
+    0x1CF50024,   # mulli   r7, r21, 0x24              r21 = slot X
+    0x7D071A14,   # add     r8, r7, r3
+    0x81280018,   # lwz     r9, 0x18(r8)               X's pristine left-hand stats (block +0x10 + X*0x24 + 8)
+    0x8148001C,   # lwz     r10, 0x1c(r8)              X's pristine right-hand stats
+    0x3D608031,   # lis     r11, 0x8031
+    0x616B1E70,   # ori     r11, r11, 0x1e70           live gun table
+    0x7D6B3A14,   # add     r11, r11, r7
+    0x818B0008,   # lwz     r12, 8(r11)
+    0x7C096000,   # cmpw    r9, r12
+    0x40820010,   # bne     swapped
+    0x818B000C,   # lwz     r12, 0xc(r11)
+    0x7C0A6000,   # cmpw    r10, r12
+    0x418200C8,   # beq     done                       same gun as stock: stock amounts
+    0x280A002E,   # swapped: cmplwi  r10, 0x2e
+    0x408000C0,   # bge     done                       X has no right-hand record (or -1)
+    0x39800001,   # li      r12, 1                     X's dual factor
+    0x2C09FFFF,   # cmpwi   r9, -1
+    0x41820008,   # beq     single
+    0x39800002,   # li      r12, 2
+    0x1D6A0240,   # single: mulli   r11, r10, 0x240
+    0x3CA08031,   # lis     r5, 0x8031
+    0x38A5B6F0,   # addi    r5, r5, -0x4910            Gun-Stats 0x8030b6f0
+    0x7D6B2A14,   # add     r11, r11, r5               r11 = X's record
+    0x80BF0010,   # lwz     r5, 0x10(r31)              the entry's preset
+    0x2C05FFFF,   # cmpwi   r5, -1
+    0x4082000C,   # bne     preset
+    0x808B0020,   # lwz     r4, 0x20(r11)              default: X's own amounts, not Y's
+    0x800B0024,   # lwz     r0, 0x24(r11)
+    0x3CC08031,   # preset: lis     r6, 0x8031
+    0x38C69900,   # addi    r6, r6, -0x6700            ammo types 0x80309900, +0 = max; type 0 ("none") has max 0
+    0x80EB0010,   # lwz     r7, 0x10(r11)              primary: X's type, Y's in r18
+    0x1D2700D0,   # mulli   r9, r7, 0xd0
+    0x7D293214,   # add     r9, r9, r6
+    0x81290000,   # lwz     r9, 0(r9)                  max(X type)
+    0x2C090000,   # cmpwi   r9, 0
+    0x4081002C,   # ble     alt
+    0x1D5200D0,   # mulli   r10, r18, 0xd0
+    0x7D4A3214,   # add     r10, r10, r6
+    0x814A0000,   # lwz     r10, 0(r10)                max(Y type)
+    0x2C0A0000,   # cmpwi   r10, 0
+    0x40810018,   # ble     alt
+    0x7CA461D6,   # mullw   r5, r4, r12
+    0x7CA551D6,   # mullw   r5, r5, r10
+    0x7CA54A14,   # add     r5, r5, r9
+    0x38A5FFFF,   # subi    r5, r5, 1                  rounded up: a pickup never comes to nothing
+    0x7EC54BD6,   # divw    r22, r5, r9
+    0x80EB0018,   # alt: lwz     r7, 0x18(r11)         alt-fire: X's type, Y's in r19
+    0x1D2700D0,   # mulli   r9, r7, 0xd0
+    0x7D293214,   # add     r9, r9, r6
+    0x81290000,   # lwz     r9, 0(r9)
+    0x2C090000,   # cmpwi   r9, 0
+    0x4081002C,   # ble     done
+    0x1D5300D0,   # mulli   r10, r19, 0xd0
+    0x7D4A3214,   # add     r10, r10, r6
+    0x814A0000,   # lwz     r10, 0(r10)
+    0x2C0A0000,   # cmpwi   r10, 0
+    0x40810018,   # ble     done
+    0x7CA061D6,   # mullw   r5, r0, r12
+    0x7CA551D6,   # mullw   r5, r5, r10
+    0x7CA54A14,   # add     r5, r5, r9
+    0x38A5FFFF,   # subi    r5, r5, 1
+    0x7EE54BD6,   # divw    r23, r5, r9
+    0x4E800020,   # done: blr
+]
+AMMO_CAVE_ORIGINAL = [
+    0x9001001C, 0x9061000C, 0x90810018, 0xC8210008, 0xC8010018, 0xEC211028,
+    0xEC001028, 0xFC20081E, 0xFC00001E, 0xD8210010, 0xD8010020, 0x80610014,
+    0x80010024, 0x7C632838, 0x7C001800, 0x40810048, 0x806D9498, 0x38800012,
+    0x80030034, 0x2C000000, 0x41820008, 0x3880000A, 0x6C838000, 0x3C004330,
+    0x90610024, 0xC822A468, 0x90010020, 0xC8010020, 0xEC000828, 0xFC00001E,
+    0xD8010018, 0x8001001C, 0x48000054, 0x4BF59AD5, 0x38C00002, 0x3C004330,
+    0x7C833010, 0x54650FFE, 0x54C40FFE, 0x806D8E50, 0x7C842910, 0x90010020,
+    0x7C630E70, 0xC822A468, 0x38030004, 0x6C008000, 0x90010024, 0xC8010020,
+    0xEC000828, 0xFC00001E, 0xD8010018, 0x8001001C, 0x7C002038, 0x7C060378,
+    0x48000044, 0x806D9498, 0x38800012, 0x80030034, 0x2C000000, 0x41820008,
+    0x3880000A, 0x6C838000, 0x3C004330, 0x90610024, 0xC822A468, 0x90010020,
+    0xC8010020, 0xEC000828, 0xFC00001E, 0xD8010018, 0x80C1001C, 0x808D9498,
+    0x3C60803C, 0x38A00018, 0x80040030, 0x3863B878, 0x7CA40630, 0x90C30004,
+    0x7CA00630, 0x90830000, 0x90030008,
+]
+AMMO_PATCHES = [
+    (AMMO_HOOK, [0x7EC4B9D6, 0x7EE0B9D6], [0x48031E01, 0x60000000],      # mullw r22,r4,r23 ; mullw r23,r0,r23
+     "pickups: a shuffled slot's ammo amounts are worked out in the cave"),
+    (AMMO_CAVE, AMMO_CAVE_ORIGINAL, AMMO_CAVE_CODE,
+     "cave: size a shuffled slot's pickups for the gun now in it"),
+]
+
+
 PATCHES = [
     STORY_FIRST_MISSION,
     (0x8013EC84, [0x38600001], [0x48007D18],
@@ -385,7 +519,7 @@ PATCHES = [
      "Story mounts gun.pak and sounds.pak like Arcade does (the mounts)"),
     SKIP_INTRO_CAVE,
     SKIP_INTRO_HOOK,
-] + ENEMY_GUN_PATCHES
+] + ENEMY_GUN_PATCHES + AMMO_PATCHES
 
 
 # --- optional: mouse look (--mouse) ---------------------------------------------
