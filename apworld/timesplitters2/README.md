@@ -2,8 +2,9 @@
 
 The `.apworld` for the TimeSplitters 2 (GameCube) Archipelago randomizer. It defines the items, locations and
 rules, and carries everything needed to play: the client (`client/`, started from the Launcher as
-**TimeSplitters 2 Client**), the disc patcher (`patcher.py`, applied by the client) and the mouse driver
-(`mouse_driver.py`, started by the client). `game` name: **`TimeSplitters 2`**; package `timesplitters2`.
+**TimeSplitters 2 Client**), the disc patcher (`patcher.py`, applied by the client), the mouse driver
+(`mouse_driver.py`, started by the client) and the music shuffle (`music.py` with its DSP ADPCM codec
+`dspadpcm.py`, applied by the client). `game` name: **`TimeSplitters 2`**; package `timesplitters2`.
 
 ## Locations (362)
 

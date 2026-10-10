@@ -41,6 +41,7 @@ from NetUtils import ClientStatus
 
 from .. import data
 from .. import memmap as mm
+from .. import music
 from .. import patcher as patch_iso
 from . import gamestate
 
@@ -1311,8 +1312,35 @@ def choose_launch(dolphin=None, game=None):
             settings.game_path = str(game)          # the original: the patched copy is kept beside it
         except Exception as exc:
             note("could not set the paths: %r", exc)
+        ask_music_folder(settings)
         _save_settings()
     return settings, str(dolphin), str(game)
+
+
+def music_mode(settings):
+    mode = str(getattr(settings, "music_shuffle", "off") or "off") if settings is not None else "off"
+    if mode not in music.MODES:
+        logger.warning("Unknown music_shuffle %r in host.yaml; using off. Choices: %s", mode, ", ".join(music.MODES))
+        mode = "off"
+    return mode
+
+
+def ask_music_folder(settings):
+    """Your songs' folder, asked for the first time a mode needs one, and remembered as music_folder."""
+    if music_mode(settings) not in ("game_and_custom", "custom_only"):
+        return
+    if os.path.exists(str(getattr(settings, "music_folder", "") or "")):
+        return
+    try:
+        folder = Utils.open_directory("Select the folder with your songs for the music shuffle") or ""
+    except Exception as exc:
+        note("no folder dialog: %r", exc)
+        folder = ""
+    if folder:
+        try:
+            settings.music_folder = folder
+        except Exception as exc:
+            note("could not set the music folder: %r", exc)
 
 
 def prepare_disc(ctx, settings, dolphin, game):
@@ -1323,7 +1351,33 @@ def prepare_disc(ctx, settings, dolphin, game):
     if patched is None:
         logger.error("Not launching without a fully patched image.")
         return None
+    apply_music(ctx, settings, str(patched))
     return str(patched)
+
+
+def apply_music(ctx, settings, image):
+    """This launch's music (host.yaml music_shuffle), written into the patched copy before boot."""
+    mode = music_mode(settings)
+    if mode in ("game_and_custom", "custom_only"):
+        logger.info("Preparing your music (new songs are converted once; this can take a moment)...")
+
+    def progress(done, total, song):
+        if done < total:
+            ctx.show_prep("Converting your songs: %d of %d done%s" % (done, total, " (%s)" % song if song else ""),
+                          done, total)
+        else:
+            ctx.show_prep("Writing the music into your disc copy...", total, total)
+
+    if mode != "off":
+        ctx.show_prep("Writing the music into your disc copy...")
+    try:
+        music.apply(image, Utils.cache_path("timesplitters2", "music"), mode=mode,
+                    folder=str(getattr(settings, "music_folder", "") or ""),
+                    seed=int(getattr(settings, "music_seed", 0) or 0),
+                    ffmpeg_path=str(getattr(settings, "ffmpeg_path", "") or ""),
+                    log=logger.info, warn=logger.warning, image_factory=patch_iso.Image, progress=progress)
+    except Exception as exc:
+        logger.warning("Music skipped: %s", exc)
 
 
 def start_game(ctx, settings, dolphin, patched):

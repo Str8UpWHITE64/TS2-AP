@@ -5,8 +5,8 @@
     python apworld/build_apworld.py                 -> apworld/timesplitters2.apworld
     python apworld/build_apworld.py --install DIR   -> also copied into DIR (an Archipelago custom_worlds)
 
-The `.apworld` is self-contained: the world, the client (`client/`), the disc patcher (`patcher.py`) and the mouse
-driver (`mouse_driver.py`). The build verifies every member against its source and refuses a stray `__pycache__`.
+The `.apworld` is self-contained: the world, the client (`client/`), the disc patcher (`patcher.py`), the mouse
+driver (`mouse_driver.py`) and the music shuffle (`music.py`, `dspadpcm.py`). The build verifies every member against its source and refuses a stray `__pycache__`.
 
 ## Running from a source checkout
 

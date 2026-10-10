@@ -15,6 +15,7 @@ Features:
 - **DeathLink, traps and bonus packs**: share deaths with the multiworld, get hit with Big Head mode at the worst
   moment, or get a timely health, armor or ammo refill.
 - **Mouse look** built in: no extra program to install or run.
+- **Music shuffle**, with your own songs if you like: any format, converted and volume-matched for you.
 - **One Launcher entry**: the client patches your disc, starts Dolphin and connects, all on its own.
 
 > **Playing the PC version too?** The PC (TS2 Redux) world is now `TimeSplitters 2 Redux`, in
@@ -70,6 +71,41 @@ On by default. Dolphin's port 1 must be a **Standard Controller**. Click into th
 aims, on foot and on mounted guns and remote cameras. **F8** turns capture on and off, **F6** / **F7** lower and
 raise the sensitivity. Turn it off with `mouse_look: false` under `timesplitters2_options` in `host.yaml`.
 The game's own Inverse Look setting is followed.
+
+### Music shuffle and your own songs
+
+Set `music_shuffle` under `timesplitters2_options` in `host.yaml` (open it from the Launcher). The music is
+prepared each time the client launches the game:
+
+| `music_shuffle` | Music |
+| --- | --- |
+| `off` | The normal soundtrack (default) |
+| `game_music` | The level and menu music shuffled |
+| `game_and_custom` | Your songs join the game's, and every level and menu track is picked from both |
+| `custom_only` | As many of your songs as fit replace game tracks, shuffled in with the rest |
+
+**Your own songs need ffmpeg**, a free audio tool the client uses to convert them. Install it first:
+
+| System | How |
+| --- | --- |
+| Windows 10 / 11 | In a terminal: `winget install Gyan.FFmpeg` (winget comes with Windows 11 and current Windows 10) |
+| macOS | With [Homebrew](https://brew.sh) (not installed by default): `brew install ffmpeg` |
+| Linux | Your package manager, e.g. `sudo apt install ffmpeg` |
+| Any | Download it from [ffmpeg.org](https://ffmpeg.org/download.html) and set `ffmpeg_path` in `host.yaml` to the `ffmpeg` program |
+
+Restart the Archipelago Launcher after installing so it finds ffmpeg. Without it, only `.mss` files (the game's
+own format) and 16-bit, 32000 Hz `.wav` files are used, and the client says so.
+
+Then put your songs in a folder (or a `.zip`), in any common format: MP3, FLAC, WAV, OGG, M4A and so on. The client
+asks for the folder the first time and remembers it as `music_folder`. Each song is converted to the game's format
+and matched to its volume once; that takes a few seconds a song, so a big folder needs a few minutes on the first
+launch and none after. Songs in an `events` subfolder play on the results screens after a win or a loss; everything
+else is level and menu music.
+
+`music_seed: 0` gives a new shuffle every launch; any other number keeps the same one. Cutscene music is never
+changed. Your songs take the place of game tracks on the patched copy only, and the next launch puts those tracks
+back before it changes anything. On a `.ciso` copy your songs only fit where game tracks they replace used to be;
+a song that does not fit is swapped for a game track, and the client says how many.
 
 ## Options
 

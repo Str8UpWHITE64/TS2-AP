@@ -25,6 +25,7 @@ PKG = "timesplitters2"
 # globbing, so a stray scratch file in the folder can never end up in a release.
 # memmap.py holds the GameCube addresses data.py must not carry.
 MEMBERS = ["__init__.py", "data.py", "options.py", "memmap.py", "patcher.py", "mouse_driver.py",
+           "music.py", "dspadpcm.py",
            "client/__init__.py", "client/ts2gc_client.py", "client/gamestate.py",
            "archipelago.json", "README.md"]
 DEFAULT_INSTALL = r"C:\ProgramData\Archipelago\custom_worlds"
