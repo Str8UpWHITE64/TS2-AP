@@ -149,7 +149,7 @@ class TS2GCCommandProcessor(ClientCommandProcessor):
 
     def _cmd_launch(self):
         """Start Dolphin on the patched image (the client does this at startup too)."""
-        launch_game(self.ctx)
+        asyncio.create_task(launch(self.ctx), name="Launch")
 
     def _cmd_weapons(self):
         """Show what each weapon currently behaves as, and which are granted."""
@@ -212,6 +212,7 @@ class TS2GCContext(CommonContext):
         self.sent_locations: typing.Set[int] = set()
         self.read_only = False
         self.dolphin_process = None
+        self.launching = False             # a launch is preparing the disc
         self.story_patched = False
         self.arcade_patched = False
         self.weapon_patched = False
@@ -253,15 +254,74 @@ class TS2GCContext(CommonContext):
         self.ammo_scale_for = None         # (mission, scale) computed for the level loaded
 
     def run_gui(self):
-        """The standard Archipelago client window: connection box, log, command bar."""
-        from kvui import GameManager
+        """The standard Archipelago client window (connection box, log, command bar), plus a
+        status line and bar for the launch's disc preparation."""
+        import logging
+        import threading
+        # kvui first: it sets kivy up before kivy loads (DPI awareness off; kivy's own makes the window
+        # re-lay itself out endlessly), and that can only happen before the first kivy import
+        from kvui import GameManager, LogtoUI
+        from kivy.clock import Clock
+        from kivy.metrics import dp
+        from kivymd.uix.boxlayout import MDBoxLayout
+        from kivymd.uix.label import MDLabel
+        from kivymd.uix.progressindicator import MDLinearProgressIndicator
+
+        def on_main_thread(fn):
+            """The window's log is not thread-safe; lines from the disc preparation thread are
+            handed to the main thread."""
+            def call(*args):
+                if threading.current_thread() is threading.main_thread():
+                    fn(*args)
+                else:
+                    Clock.schedule_once(lambda _dt: fn(*args))
+            return call
 
         class TS2Manager(GameManager):
             logging_pairs = [("Client", "Archipelago")]
             base_title = "Archipelago TimeSplitters 2 Client"
 
+            def build(self):
+                layout = super().build()
+                # a status line and bar under the server bar while a launch prepares the disc
+                self.prep_box = MDBoxLayout(orientation="vertical", size_hint_y=None, height=0, opacity=0,
+                                            padding=(dp(8), 0))
+                self.prep_label = MDLabel(text="", size_hint_y=None, height=dp(24))
+                self.prep_bar = MDLinearProgressIndicator(size_hint_y=None, height=dp(4), max=1, value=0)
+                self.prep_box.add_widget(self.prep_label)
+                self.prep_box.add_widget(self.prep_bar)
+                # kivy lists children last-first: this index puts it just below Archipelago's own bar
+                self.grid.add_widget(self.prep_box, index=self.grid.children.index(self.progressbar))
+                for name in [None] + list(logging.Logger.manager.loggerDict):
+                    for handler in logging.getLogger(name).handlers:
+                        if isinstance(handler, LogtoUI):
+                            handler.on_log = on_main_thread(handler.on_log)
+                return layout
+
+            def show_prep(self, text, done, total):
+                self.prep_box.height, self.prep_box.opacity = dp(32), 1
+                self.prep_label.text = text
+                self.prep_bar.max = max(1, total or 0)
+                self.prep_bar.value = done or 0
+
+            def hide_prep(self):
+                self.prep_box.height, self.prep_box.opacity = 0, 0
+
         self.ui = TS2Manager(self)
         self.ui_task = asyncio.create_task(self.ui.async_run(), name="UI")
+
+    def show_prep(self, text, done=None, total=None):
+        """Launch progress in the window (any thread), and in the log. done/total fill the bar;
+        without them it stays empty and the line alone says what is happening."""
+        note(text)
+        if self.ui is not None and hasattr(self.ui, "prep_box"):
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda _dt: self.ui.show_prep(text, done, total))
+
+    def hide_prep(self):
+        if self.ui is not None and hasattr(self.ui, "prep_box"):
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda _dt: self.ui.hide_prep())
 
     async def server_auth(self, password_requested: bool = False):
         if password_requested and not self.password:
@@ -1110,6 +1170,16 @@ def _settings():
         return None
 
 
+def _save_settings():
+    """Write host.yaml now. Archipelago only adds the keys a new version brings when it saves on
+    exit, so the client saves at start too: an upgrade's new options show up straight away."""
+    try:
+        from settings import get_settings
+        get_settings().save()
+    except Exception as exc:
+        note("could not save settings: %r", exc)
+
+
 # Every patched image carries the optional mouse-look hook too: it does nothing unless the
 # mouse driver is running, so one image serves everyone (mouse_look in host.yaml decides).
 ALL_PATCHES = patch_iso.PATCHES + [p for p in patch_iso.MOUSE_PATCHES if p not in patch_iso.PATCHES]
@@ -1177,8 +1247,38 @@ def _ask_path(title, filetypes):
         return None
 
 
-def launch_game(ctx, dolphin=None, game=None):
-    """Start Dolphin on the patched copy of the disc.
+async def launch(ctx, dolphin=None, game=None):
+    """Ask for anything missing, prepare the disc copy off the main thread (the window stays up and
+    shows the progress), then start Dolphin on it."""
+    if ctx.launching:
+        logger.info("Already launching; wait for Dolphin to start.")
+        return
+    if ctx.exit_event.is_set():
+        return
+    chosen = choose_launch(dolphin, game)
+    if chosen is None:
+        return
+    settings, dolphin, game = chosen
+    ctx.launching = True
+    try:
+        patched = await asyncio.to_thread(prepare_disc, ctx, settings, dolphin, game)
+    except Exception as exc:
+        logger.exception("Preparing the disc failed: %s", exc)
+        patched = None
+    finally:
+        ctx.launching = False
+        ctx.hide_prep()
+    # the window may have been closed while the disc was prepared: then there is no one to play
+    if patched is not None and not ctx.exit_event.is_set():
+        proc = start_game(ctx, settings, dolphin, patched)
+        if proc is not None:
+            ctx.dolphin_process = proc
+            ctx.dolphin_exit_reported = False
+
+
+def choose_launch(dolphin=None, game=None):
+    """Dolphin and the disc, asked for on the main thread (the file dialogs need it) before any slow
+    work. Returns (settings, dolphin, game), or None if something was not chosen.
 
     The paths come from the command line, else host.yaml, else a file picker on the
     first run. host.yaml keeps the ORIGINAL disc; the patched copy lives beside it.
@@ -1209,17 +1309,27 @@ def launch_game(ctx, dolphin=None, game=None):
         try:
             settings.dolphin_path = str(dolphin)
             settings.game_path = str(game)          # the original: the patched copy is kept beside it
-            from settings import get_settings
-            get_settings().save()
         except Exception as exc:
-            logger.debug("could not save settings: %r", exc)
-    patched = ensure_patched(str(game))
+            note("could not set the paths: %r", exc)
+        _save_settings()
+    return settings, str(dolphin), str(game)
+
+
+def prepare_disc(ctx, settings, dolphin, game):
+    """The slow part of a launch, run off the main thread so the window stays up: patch the copy.
+    Returns the image to boot, or None. Progress goes through ctx.show_prep."""
+    ctx.show_prep("Patching your disc copy...")
+    patched = ensure_patched(game)
     if patched is None:
         logger.error("Not launching without a fully patched image.")
         return None
-    logger.info("Launching %s", os.path.basename(str(patched)))
+    return str(patched)
+
+
+def start_game(ctx, settings, dolphin, patched):
+    logger.info("Launching %s", os.path.basename(patched))
     try:
-        proc = subprocess.Popen([str(dolphin), "--exec=%s" % patched, "--batch"])
+        proc = subprocess.Popen([dolphin, "--exec=%s" % patched, "--batch"])
     except Exception as exc:
         logger.error("Could not start Dolphin: %s", exc)
         return None
@@ -1266,6 +1376,7 @@ def main(*launch_args: str):
                             help="the original TimeSplitters 2 disc image; a patched copy is written "
                                  "beside it (remembered in host.yaml)")
         args = parser.parse_args(launch_args)
+        _save_settings()
         ctx = TS2GCContext(args.connect, args.password)
         if args.name:
             ctx.auth = args.name
@@ -1276,9 +1387,10 @@ def main(*launch_args: str):
         if gui_enabled:
             ctx.run_gui()
         ctx.run_cli()
-        if not args.no_launch:
-            ctx.dolphin_process = launch_game(ctx, args.dolphin, args.game)
         loop = asyncio.create_task(game_loop(ctx), name="GameLoop")
+        if not args.no_launch:
+            await asyncio.sleep(0.5)            # let the window draw before the dialogs and the slow work
+            await launch(ctx, args.dolphin, args.game)
         await ctx.exit_event.wait()
         loop.cancel()
         if ctx.mouse_process is not None and ctx.mouse_process.is_alive():
