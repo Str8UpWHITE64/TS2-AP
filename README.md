@@ -120,7 +120,7 @@ The template yaml from the Launcher lists every option with its choices.
   share of the new gun's maximum it would have given the old one.
 - **Skip Intro Cutscenes**: on by default; turn it off to watch each mission's intro.
 - **Health, Armor and Ammo Packs**: one-time refills from the multiworld, applied as soon as you are in a level.
-- **Traps**: each switches on a TimeSplitters 2 cheat (big heads, cloaked enemies, cardboard characters, ...) for
+- **Traps**: each switches on a TimeSplitters 2 cheat (big heads, fat enemies, cardboard characters, ...) for
   30 seconds during a story mission, one at a time. Traps received elsewhere wait for your next mission.
 - **DeathLink**: every story death is shared. Arcade and Challenge are deathmatches, so there one death goes out
   per `arcade_death_link_threshold` deaths. A death you receive waits until you are on foot (not on a turret or

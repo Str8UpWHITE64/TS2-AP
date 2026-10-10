@@ -309,7 +309,7 @@ class TS2World(World):
         # Everything else (unit unlocks + the Time Crystal) is progression.
         if name == data.FILLER_ITEM or name in data.BONUS_ITEMS:
             classification = ItemClassification.filler         # Banana + one-time bonus packs: non-progression
-        elif name in data.TRAP_CHEATS:
+        elif name in data.TRAP_ID_ORDER:
             classification = ItemClassification.trap           # cheat traps (client fires them in Story missions)
         elif name in data.WEAPON_ITEM_NAMES:
             classification = (ItemClassification.progression if self.gating

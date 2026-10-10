@@ -86,7 +86,7 @@ LOCATION_NAME = {loc: name for name, loc in data.location_name_to_id.items()}
 # One-time items, counted rather than held: how many have arrived against how many
 # the client has already applied, the latter kept in the server's data storage.
 PACK_IDS = [data.item_name_to_id[name] for name in data.BONUS_ITEMS]     # health, armor, ammo
-TRAP_IDS = [data.item_name_to_id[name] for name in data.TRAP_ITEMS]
+TRAP_IDS = [data.item_name_to_id[name] for name in data.TRAP_ID_ORDER]
 TRAP_SECONDS = 30
 # A DeathLink kill takes a frame or two to land. If it never registers as a death,
 # stop waiting for it rather than swallow the player's next real one.
@@ -1012,26 +1012,37 @@ class TS2GCContext(CommonContext):
         the running one early, and it still counts as delivered.
         """
         in_story = player is not None and gamestate.current_mission() is not None
+        changed = self.skip_retired_traps(counts)
         if self.trap is not None:
             index, bit, ends, before = self.trap
             if time.monotonic() >= ends or not in_story:
                 gamestate.cheat_off(bit, before)
                 self.trap = None
                 counts["traps"][index] += 1
-                logger.info("%s is over.", data.TRAP_ITEMS[index])
+                logger.info("%s is over.", data.TRAP_ID_ORDER[index])
                 return True
             gamestate.cheat_on(bit)
-            return False
+            return changed
         if not in_story:
-            return False
-        for index, name in enumerate(data.TRAP_ITEMS):
-            if counts["traps"][index] < self.traps_received[index]:
+            return changed
+        for index, name in enumerate(data.TRAP_ID_ORDER):
+            if name not in data.RETIRED_TRAPS and counts["traps"][index] < self.traps_received[index]:
                 bit = data.TRAP_CHEATS[name]
                 self.trap = (index, bit, time.monotonic() + TRAP_SECONDS, gamestate.cheat_state(bit))
                 gamestate.cheat_on(bit)
                 logger.info("%s! (%d seconds)", name, TRAP_SECONDS)
                 break
-        return False
+        return changed
+
+    def skip_retired_traps(self, counts: dict) -> bool:
+        """A seed made before a trap was dropped may still send it: count it delivered, once, and do nothing."""
+        changed = False
+        for index, name in enumerate(data.TRAP_ID_ORDER):
+            if name in data.RETIRED_TRAPS and counts["traps"][index] < self.traps_received[index]:
+                counts["traps"][index] = self.traps_received[index]
+                logger.info("%s no longer exists in this version and is skipped.", name)
+                changed = True
+        return changed
 
     def apply_player_items(self):
         """DeathLink, packs and traps: everything that acts on the player in a level."""

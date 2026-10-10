@@ -99,7 +99,6 @@ BONUS_ITEM_ID_BASE = 0x902     # item id = BASE_ID + 0x902.. (free block between
 # 0 Gun Sounds, 1 Big Heads, 2 Small Heads, 3 Big Hands, 4 Infinite Ammo, 5 Paintball, 6 Fat Characters,
 # 7 Skating, 8 All Cloaked, 9 Slow-Mo Deaths, 10 Cardboard, 11 Rotating Heads, 12 Silly Hats. ---
 TRAP_CHEATS = {
-    "Invisible Enemies Trap":  8,   # All Characters Cloaked
     "Big Head Trap":           1,   # Big Heads
     "Small Head Trap":         2,   # Small Heads
     "Big Hands Trap":          3,   # Big Hands
@@ -109,11 +108,12 @@ TRAP_CHEATS = {
     "Slow Death Trap":         9,   # Slow Motion Deaths
 }
 TRAP_ITEMS = list(TRAP_CHEATS)
-TRAP_ITEM_ID_BASE = 0x910      # item id = BASE_ID + 0x910 + i
-# Spawn-time cheats only take effect on a level (re)load (vs render-time ones that apply instantly mid-mission,
-# confirmed in-game). The client arms a spawn-time trap while the player is OUTSIDE a level so it lands on the next
-# entry. (Confirmed render-time: Big/Small Heads, Big Hands, Fat, Slow-Mo Deaths, Cardboard, Rotating Heads.)
-TRAP_SPAWN_TIME = frozenset({"Invisible Enemies Trap"})   # All Characters Cloaked needs a reload
+# Retired traps keep their item id, so seeds that already hold one still resolve it and the later traps keep theirs.
+# Invisible Enemies (cheat 8, All Characters Cloaked) was dropped: the game applies the cloak only as a character
+# spawns and never removes it, so a timed trap showed nothing, or cloaked later spawns for the rest of the level.
+RETIRED_TRAPS = ("Invisible Enemies Trap",)
+TRAP_ID_ORDER = list(RETIRED_TRAPS) + TRAP_ITEMS
+TRAP_ITEM_ID_BASE = 0x910      # item id = BASE_ID + 0x910 + position in TRAP_ID_ORDER
 
 # difficulty sets used by the objective table
 _ALL = frozenset(("Easy", "Normal", "Hard")); _NH = frozenset(("Normal", "Hard")); _EN = frozenset(("Easy", "Normal"))
@@ -602,7 +602,7 @@ for _ws in weapon_gated_slots():                   # weapons-as-items: one item 
     item_name_to_id[WEAPON_ITEM_OF[_ws]] = BASE_ID + WEAPON_ITEM_ID_BASE + _ws
 for _i, _bn in enumerate(BONUS_ITEMS):                  # bonus filler items (Health/Armor/Ammo Pack)
     item_name_to_id[_bn] = BASE_ID + BONUS_ITEM_ID_BASE + _i
-for _i, _tn in enumerate(TRAP_ITEMS):                   # trap items
+for _i, _tn in enumerate(TRAP_ID_ORDER):                # trap items
     item_name_to_id[_tn] = BASE_ID + TRAP_ITEM_ID_BASE + _i
 assert len(set(item_name_to_id.values())) == len(item_name_to_id), "duplicate item id"  # id-collision guard
 
@@ -629,7 +629,7 @@ for _m, _objs in OBJECTIVES.items():
         OBJ_LOC_INFO[_ln] = (_tid, _prim, _sec, _m)
 
 _n_obj = sum(len(o) for o in OBJECTIVES.values())
-assert len(item_name_to_id) == len(UNIT_NAMES) + 2 + len(weapon_gated_slots()) + len(BONUS_ITEMS) + len(TRAP_ITEMS), \
+assert len(item_name_to_id) == len(UNIT_NAMES) + 2 + len(weapon_gated_slots()) + len(BONUS_ITEMS) + len(TRAP_ID_ORDER), \
     "item name collision"   # units + Time Crystal + filler + weapons + bonus packs + trap items
 assert len(location_name_to_id) == 66 * len(TROPHY_TIERS) + len(STORY) * len(STORY_DIFFICULTIES) + _n_obj, "location name collision"
 assert len(set(location_name_to_id.values())) == len(location_name_to_id), "duplicate location id"
@@ -664,7 +664,7 @@ item_name_groups = {
     "Challenge": {ITEM_OF[e[2]] for e in TROPHY_EVENTS if e[0] == "challenge"},
     "Story":     {ITEM_OF[m] for m in STORY},
     "Weapons":   set(WEAPON_ITEM_OF.values()),
-    "Traps":     set(TRAP_ITEMS),
+    "Traps":     set(TRAP_ID_ORDER),
     "Bonus":     set(BONUS_ITEMS),
 }
 

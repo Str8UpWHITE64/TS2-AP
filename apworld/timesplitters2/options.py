@@ -116,7 +116,7 @@ class BonusAmmoPacks(Range):
 
 class TrapCount(Range):
     """How many Trap items to place. Each trap, when received during a STORY mission, switches on a disruptive TS2
-    cheat (invisible enemies, big heads, rotating heads, ...) for 30 seconds, one trap at a time. Traps received
+    cheat (big heads, rotating heads, cardboard characters, ...) for 30 seconds, one trap at a time. Traps received
     outside a story mission wait for the next one. Drawn randomly from the named trap set. Replaces junk filler;
     auto-trimmed if there aren't enough free filler slots."""
     display_name = "Trap Count"
