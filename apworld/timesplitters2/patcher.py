@@ -318,6 +318,54 @@ SKIP_INTRO_HOOK = (
     "intro skip: starting a story mission asks the cave whether to play the intro",
 )
 
+# --- weapon shuffle, part three: enemies use the gun they hold, not its slot ---
+# How an enemy fires (range class, burst length) is looked up by the gun's Gun-Stats
+# index, which the shuffle carries along. A few enemy checks instead compare the
+# pawn's requested slot (+0xC8) with fixed slot numbers, so a gun shuffled into
+# another slot was handled as the gun it replaced: a Flamethrower in the S47 slot was
+# fired from rifle range, a shotgun in the Sniper Rifle slot from sniper range. Each
+# check now loads the right-hand Gun-Stats index (+0x440) and compares it with the
+# stats index of the same gun. In every site the base is the pawn and the register is
+# only compared; each site was run, stock and patched, for every gun and takes the
+# same branch for the gun's stats as the stock code did for its slot.
+#   slot -> stats: 10->5 11->6 13->8 14->9 15/16->10 20->14 21->15 22->16 24..26->19..21
+ENEMY_GUN_SITES = [
+    (0x801CF294, [0x800300C8, 0x2C000014, 0x41820014, 0x2C000016, 0x4182000C, 0x2C000015],
+     [0x80030440, 0x2C00000E, 0x41820014, 0x2C000010, 0x4182000C, 0x2C00000F],
+     "no secondary fire in Story for the Homing Launcher, Lasergun and Plasma Autorifle"),
+    (0x801D9418, [0x801A00C8, 0x2C00000D], [0x801A0440, 0x2C000008],
+     "the Flamethrower fires only within flame reach"),
+    (0x801D98A0,
+     [0x807A00C8, 0x2C03000D, 0x4082001C, 0xC002BFF8, 0xFC1F0040, 0x40810010, 0x38000004, 0x901A12D8,
+      0x48000328, 0x809A12D8, 0x2C040003, 0x41820050, 0x3803FFE8, 0x28000001, 0x4081000C, 0x2C03001A],
+     [0x807A0440, 0x2C030008, 0x4082001C, 0xC002BFF8, 0xFC1F0040, 0x40810010, 0x38000004, 0x901A12D8,
+      0x48000328, 0x809A12D8, 0x2C040003, 0x41820050, 0x3803FFED, 0x28000001, 0x4081000C, 0x2C030015],
+     "Flamethrower and mine attack states"),
+    (0x801D9B3C, [0x801A00C8, 0x2C00000D], [0x801A0440, 0x2C000008],
+     "Flamethrower attack state"),
+    (0x801E5058, [0x801E00C8, 0x2C00000D, 0x41820018, 0x2C00000E],
+     [0x801E0440, 0x2C000008, 0x41820018, 0x2C000009],
+     "close engage distances for the Flamethrower and Fire Extinguisher"),
+    (0x801E621C, [0x801E00C8, 0x2C00000D], [0x801E0440, 0x2C000008],
+     "Flamethrower chase distance (1)"),
+    (0x801E6304, [0x801E00C8, 0x2C00000D], [0x801E0440, 0x2C000008],
+     "Flamethrower chase distance (2)"),
+    (0x801E63E4, [0x801E00C8, 0x2C00000D], [0x801E0440, 0x2C000008],
+     "Flamethrower chase distance (3)"),
+    (0x801C82C8, [0x801F00C8, 0x2C00000B], [0x801F0440, 0x2C000006],
+     "only the Sniper Rifle skips the maximum engage range"),
+    (0x80120040,
+     [0x801D00C8, 0x2C00000F, 0x4182000C, 0x2C000010, 0x40820020, 0xC002A91C, 0xFC040040, 0x40810014,
+      0xEC240028, 0xC002A830, 0xEC010024, 0x4800002C, 0x2C000016],
+     [0x801D0440, 0x2C00000A, 0x4182000C, 0x2C00000A, 0x40820020, 0xC002A91C, 0xFC040040, 0x40810014,
+      0xEC240028, 0xC002A830, 0xEC010024, 0x4800002C, 0x2C000010],
+     "aim error for the S47 and Plasma Autorifle"),
+    (0x801148F0, [0x800400C8, 0x2C00000A], [0x80040440, 0x2C000005],
+     "the Minigun's second fire mode never runs dry"),
+]
+ENEMY_GUN_PATCHES = [(ram, original, patched, "enemies: " + what)
+                     for ram, original, patched, what in ENEMY_GUN_SITES]
+
 PATCHES = [
     STORY_FIRST_MISSION,
     (0x8013EC84, [0x38600001], [0x48007D18],
@@ -337,7 +385,7 @@ PATCHES = [
      "Story mounts gun.pak and sounds.pak like Arcade does (the mounts)"),
     SKIP_INTRO_CAVE,
     SKIP_INTRO_HOOK,
-]
+] + ENEMY_GUN_PATCHES
 
 
 # --- optional: mouse look (--mouse) ---------------------------------------------

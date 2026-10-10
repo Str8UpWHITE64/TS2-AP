@@ -30,8 +30,10 @@ adds or changes patches. By hand:
 The randomizer patches: the story gate (the first mission can be locked like the rest), the arcade/challenge
 gate (the first match of each group can be locked), the gun precache (a story level rebuilds its gun tables from
 the seed's shuffle as it starts loading, and Arcade and Challenge loads get the native tables back), the pak
-mounts (Story can load any gun), and the intro skip (starting a story mission asks a flag the client sets from
-the seed whether to play the intro; zero, as at boot, plays it). The optional mouse hook is added to every image
+mounts (Story can load any gun), the intro skip (starting a story mission asks a flag the client sets from
+the seed whether to play the intro; zero, as at boot, plays it), and the enemy weapon checks (the few enemy
+checks that named a gun by its slot, such as the Flamethrower's reach and the Sniper Rifle's range, name it by
+its Gun-Stats instead, so they follow a shuffled gun). The optional mouse hook is added to every image
 the client writes; it does nothing without the mouse driver.
 
 The patches use low RAM at `0x80001800`..`0x80003000` (weapon block, mouse block, intro-skip flag). Dolphin puts
