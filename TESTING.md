@@ -33,7 +33,9 @@ the seed's shuffle as it starts loading, and Arcade and Challenge loads get the 
 mounts (Story can load any gun), the intro skip (starting a story mission asks a flag the client sets from
 the seed whether to play the intro; zero, as at boot, plays it), and the enemy weapon checks (the few enemy
 checks that named a gun by its slot, such as the Flamethrower's reach and the Sniper Rifle's range, name it by
-its Gun-Stats instead, so they follow a shuffled gun). The optional mouse hook is added to every image
+its Gun-Stats instead, so they follow a shuffled gun), and the Remote Mine checks (a Remote Mine with mines
+still out stays held and selectable when empty; the game asked this of slot 25, the patch asks it of the gun's
+Gun-Stats). The optional mouse hook is added to every image
 the client writes; it does nothing without the mouse driver.
 
 The patches use low RAM at `0x80001800`..`0x80003000` (weapon block, mouse block, intro-skip flag). Dolphin puts

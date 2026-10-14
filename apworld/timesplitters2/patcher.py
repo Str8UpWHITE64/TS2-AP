@@ -500,6 +500,44 @@ AMMO_PATCHES = [
 ]
 
 
+# --- weapon shuffle, part five: the Remote Mine is the gun, not slot 25 ---------
+# A gun that runs dry is put away for the best other gun, and an empty gun cannot be
+# selected. The Remote Mine is excepted while the player still has remote mines out
+# (FUN_8013b6bc counts them), so they can be set off. That exception tests the slot
+# for 25, so a Remote Mine shuffled to another mine slot was put away after the last
+# throw and could not be picked again to detonate. Each site reads the slot's
+# right-hand Gun-Stats index from the gun table right after the compare; the compare
+# moves below that load and tests the Remote Mine's stats index (0x14) instead. The
+# moved words are unchanged, nothing between reads cr0, and every register is the same
+# at the branch; each site was run, stock and patched, for every gun in every slot.
+REMOTE_MINE_SITES = [
+    (0x80117FA8, [0x2C040019, 0x3B43000C, 0x7C1A002E], [0x3B43000C, 0x7C1A002E, 0x2C000014],
+     "put away when empty (1)"),
+    (0x80118038, [0x2C030019, 0x7C1A002E], [0x7C1A002E, 0x2C000014], "put away when empty (2)"),
+    (0x8012079C, [0x2C040019, 0x7C630214, 0x8003000C], [0x7C630214, 0x8003000C, 0x2C000014],
+     "put away when empty (3)"),
+    (0x80122300, [0x2C040019, 0x3B83000C, 0x7C1C002E], [0x3B83000C, 0x7C1C002E, 0x2C000014],
+     "put away when empty (4)"),
+    (0x80122390, [0x2C030019, 0x7C1C002E], [0x7C1C002E, 0x2C000014], "put away when empty (5)"),
+    (0x80123834, [0x2C040019, 0x7C630214, 0x8003000C], [0x7C630214, 0x8003000C, 0x2C000014],
+     "put away when empty (6)"),
+    (0x80123A80, [0x2C040019, 0x7C630214, 0x8003000C], [0x7C630214, 0x8003000C, 0x2C000014],
+     "put away when empty (7)"),
+    (0x80123EA4, [0x2C040019, 0x7C630214, 0x8003000C], [0x7C630214, 0x8003000C, 0x2C000014],
+     "put away when empty (8)"),
+    (0x80124124, [0x2C040019, 0x7C630214, 0x8003000C], [0x7C630214, 0x8003000C, 0x2C000014],
+     "put away when empty (9)"),
+    (0x80124320, [0x2C1F0019, 0x38841E70, 0x7C840214, 0x8004000C],
+     [0x38841E70, 0x7C840214, 0x8004000C, 0x2C000014], "may be held empty"),
+    (0x80124784, [0x2C1F0019, 0x38031E70, 0x7C60EA14, 0x8003000C],
+     [0x38031E70, 0x7C60EA14, 0x8003000C, 0x2C000014], "may be selected empty (1)"),
+    (0x8012480C, [0x2C1F0019, 0x38031E70, 0x7C60EA14, 0x8003000C],
+     [0x38031E70, 0x7C60EA14, 0x8003000C, 0x2C000014], "may be selected empty (2)"),
+]
+REMOTE_MINE_PATCHES = [(ram, original, patched, "Remote Mine: " + what)
+                       for ram, original, patched, what in REMOTE_MINE_SITES]
+
+
 # --- weapon sway: switched off by the client's flag ----------------------------
 # FUN_8004DDB0 also runs the view's sway (the "breathing" that drifts the view and
 # gun, larger while moving). The camera struct at [r13-0x77b4] holds two phases
@@ -556,7 +594,7 @@ PATCHES = [
      "Story mounts gun.pak and sounds.pak like Arcade does (the mounts)"),
     SKIP_INTRO_CAVE,
     SKIP_INTRO_HOOK,
-] + ENEMY_GUN_PATCHES + AMMO_PATCHES + SWAY_PATCHES
+] + ENEMY_GUN_PATCHES + AMMO_PATCHES + REMOTE_MINE_PATCHES + SWAY_PATCHES
 
 
 # --- optional: mouse look (--mouse) ---------------------------------------------

@@ -116,7 +116,8 @@ The template yaml from the Launcher lists every option with its choices.
   Without it, the goal is a percentage of the trophy checks.
 - **Weapon Gating**: weapons are items; a gun you have not received is taken off you.
 - **Weapon Shuffle**: each weapon is replaced by another in the story, everywhere at once, by class, or only
-  among a level's own guns. Mines only ever swap with mines. Ammo follows the new gun: a pickup gives the same
+  among a level's own guns. Mines only ever swap with mines, and a Remote Mine in another mine's place still
+  stays out while its mines can be set off. Ammo follows the new gun: a pickup gives the same
   share of the new gun's maximum it would have given the old one. Enemies carry shuffled guns too, and use them
   as the gun they now hold.
 - **Skip Intro Cutscenes**: on by default; turn it off to watch each mission's intro.
