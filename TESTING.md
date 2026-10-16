@@ -35,7 +35,8 @@ the seed whether to play the intro; zero, as at boot, plays it), and the enemy w
 checks that named a gun by its slot, such as the Flamethrower's reach and the Sniper Rifle's range, name it by
 its Gun-Stats instead, so they follow a shuffled gun), and the Remote Mine checks (a Remote Mine with mines
 still out stays held and selectable when empty; the game asked this of slot 25, the patch asks it of the gun's
-Gun-Stats). The optional mouse hook is added to every image
+Gun-Stats), and the scoped rifle checks (the Sniper Rifle and Vintage Rifle can be shown and selected with no
+ammo; the game asked this of slots 11 and 12, the patch asks it of the gun's Gun-Stats). The optional mouse hook is added to every image
 the client writes; it does nothing without the mouse driver.
 
 The patches use low RAM at `0x80001800`..`0x80003000` (weapon block, mouse block, intro-skip flag). Dolphin puts

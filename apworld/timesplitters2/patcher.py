@@ -538,6 +538,44 @@ REMOTE_MINE_PATCHES = [(ram, original, patched, "Remote Mine: " + what)
                        for ram, original, patched, what in REMOTE_MINE_SITES]
 
 
+# --- weapon shuffle, part six: the scoped rifles are the guns, not slots 11/12 ----
+# The same two checks (held empty, FUN_80124304; selected empty, FUN_8012451c in the
+# form the weapon-change button asks it) also let the Sniper Rifle and
+# Vintage Rifle through with no ammo. They test the slot for 11 or 12, so a shuffled Sniper
+# Rifle lost this and whatever gun took slot 11 or 12 gained it. Each tail now reads
+# the slot's right-hand Gun-Stats index from the gun table and tests it for 6 or 7
+# (the two rifles' stats, used by no other slot) as (index - 6) <= 1 unsigned.
+# Every path into each tail carries a result of 0 or 1, and on a match the tail sets
+# 1, so the stock "skip if already 1" test is not needed and its words hold the load.
+# Only registers the stock code overwrites before returning are used (the held check
+# returns in r3 and reloads r0; the selected check copies r0 to r3 and every path
+# after it sets cr0 before reading it). The Remote Mine words above are not touched.
+# Each tail was run, stock and patched, for every gun in every slot.
+RIFLE_SITES = [
+    (0x8012437C,
+     [0x2C000000, 0x7C030378, 0x40820018, 0x2C1F000B, 0x4182000C, 0x2C1F000C, 0x40820008],
+     [0x7C030378,   # mr      r3, r0                      the result so far
+      0x1C9F0024,   # mulli   r4, r31, 0x24               r31 = the slot
+      0x3C848031,   # addis   r4, r4, 0x8031
+      0x80841E7C,   # lwz     r4, 0x1e7c(r4)              gun table +0x0C: right-hand Gun-Stats
+      0x3884FFFA,   # addi    r4, r4, -6
+      0x28040001,   # cmplwi  r4, 1
+      0x41810008],  # bgt     <return>                    else li r3, 1
+     "may be held empty"),
+    (0x801247E4,
+     [0x2C000000, 0x40820018, 0x2C1F000B, 0x4182000C, 0x2C1F000C, 0x40820008],
+     [0x3C608031,   # lis     r3, 0x8031
+      0x38631E7C,   # addi    r3, r3, 0x1e7c
+      0x7C63E82E,   # lwzx    r3, r3, r29                 r29 = slot * 0x24
+      0x3863FFFA,   # addi    r3, r3, -6
+      0x28030001,   # cmplwi  r3, 1
+      0x41810008],  # bgt     <mr r3, r0>                 else li r0, 1
+     "may be selected empty"),
+]
+RIFLE_PATCHES = [(ram, original, patched, "Sniper/Vintage Rifle: " + what)
+                 for ram, original, patched, what in RIFLE_SITES]
+
+
 # --- weapon sway: switched off by the client's flag ----------------------------
 # FUN_8004DDB0 also runs the view's sway (the "breathing" that drifts the view and
 # gun, larger while moving). The camera struct at [r13-0x77b4] holds two phases
@@ -594,7 +632,7 @@ PATCHES = [
      "Story mounts gun.pak and sounds.pak like Arcade does (the mounts)"),
     SKIP_INTRO_CAVE,
     SKIP_INTRO_HOOK,
-] + ENEMY_GUN_PATCHES + AMMO_PATCHES + REMOTE_MINE_PATCHES + SWAY_PATCHES
+] + ENEMY_GUN_PATCHES + AMMO_PATCHES + REMOTE_MINE_PATCHES + RIFLE_PATCHES + SWAY_PATCHES
 
 
 # --- optional: mouse look (--mouse) ---------------------------------------------
