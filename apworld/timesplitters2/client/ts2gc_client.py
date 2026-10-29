@@ -83,6 +83,18 @@ assert sorted(AP_TO_GAME) == list(range(len(AP_EVENT_NAMES))), "event index mapp
 DIFF_BIT = {"Easy": 1, "Normal": 2, "Hard": 4}
 LOCATION_NAME = {loc: name for name, loc in data.location_name_to_id.items()}
 
+# The unlock a location's progress needs: the match for a trophy, the mission for a story
+# clear or objective. A check is only sent once that unlock has been received.
+UNIT_OF_LOCATION = {}
+for _ei, _name in enumerate(AP_EVENT_NAMES):
+    for _ti in range(len(data.TROPHY_TIERS)):
+        UNIT_OF_LOCATION[TROPHY_BASE + _ei * 4 + _ti] = _name
+for _mi, _name in enumerate(data.STORY):
+    for _di in range(3):
+        UNIT_OF_LOCATION[STORY_BASE + _mi * 3 + _di] = _name
+for _loc_name, (_tid, _prim, _sec, _mission) in data.OBJ_LOC_INFO.items():
+    UNIT_OF_LOCATION[data.location_name_to_id[_loc_name]] = _mission
+
 # One-time items, counted rather than held: how many have arrived against how many
 # the client has already applied, the latter kept in the server's data storage.
 PACK_IDS = [data.item_name_to_id[name] for name in data.BONUS_ITEMS]     # health, armor, ammo
@@ -211,6 +223,8 @@ class TS2GCContext(CommonContext):
         self.story_cleared: typing.Dict[int, int] = {0: 0, 1: 0, 2: 0}   # diff -> mission bitmask
         self.level_completions: typing.Dict[int, int] = {}               # level id -> story count
         self.sent_locations: typing.Set[int] = set()
+        self.own_clears: typing.Set[int] = set()      # story clear ids this client saw happen
+        self.held_said: typing.Set[int] = set()
         self.read_only = False
         self.dolphin_process = None
         self.launching = False             # a launch is preparing the disc
@@ -343,7 +357,7 @@ class TS2GCContext(CommonContext):
                 self.granted_units.add(name)
             # which profiles have had the yaml preferences written, so it happens once;
             # and how many packs and traps have already been applied
-            self.set_notify(self.prefs_key(), self.grant_key(), self.profile_key())
+            self.set_notify(self.prefs_key(), self.grant_key(), self.profile_key(), self.clears_key())
             self.arcade_death_threshold = int(self.slot_data.get("arcade_death_link_threshold", 10))
             self.arcade_deaths = 0
             if self.slot_data.get("death_link"):
@@ -534,23 +548,69 @@ class TS2GCContext(CommonContext):
         return False
 
     # ---- reading progress -> checks --------------------------------------
-    def seed_from_server(self):
-        """Rebuild true progress from the server's checked locations.
+    def clears_key(self):
+        return "ts2gc_clears_%s_%s" % (self.team, self.slot)
 
-        The server is the durable record. Rebuilding from it rather than from the
-        game matters because the client overwrites the story bitfield for gating,
-        so the game's own copy is not trustworthy after the first write.
+    def seed_from_server(self):
+        """Rebuild true progress from the record of clears this client saw happen.
+
+        The client overwrites the story bitfield for gating, so the game's own copy is
+        not trustworthy after the first write. The server's checked locations are not
+        either: another player's release or collect marks this slot's locations checked
+        without the player having played them, and the client cannot tell those from its
+        own. So story progress comes from a record the client keeps in data storage, and
+        the checked locations only stop anything being sent twice.
+
+        A seed with no record yet (made before the record existed) starts with none:
+        its checked story ids cannot be told apart. The cost is that a Space Station
+        clear already made has to be repeated for the goal; checks are never re-sent.
         """
-        for loc in self.checked_locations:
+        if self.clears_key() not in self.stored_data:
+            return                              # not heard back from the server yet
+        record = self.stored_data[self.clears_key()]
+        if record is None:
+            if not self.items_received:
+                return                          # wait for the room's items before settling it
+            record = {}
+            self.stored_data[self.clears_key()] = record
+            asyncio.create_task(self.send_msgs([{
+                "cmd": "Set", "key": self.clears_key(), "default": {}, "want_reply": False,
+                "operations": [{"operation": "update", "value": {}}]}]))
+        for key in record:
+            self.own_clears.add(int(key))
+        for loc in self.own_clears:
             offset = loc - STORY_BASE
-            # objective ids live above the story block; only story ids rebuild progress
             if 0 <= offset < len(data.STORY) * 3:
                 mi, di = divmod(offset, 3)
                 self.story_cleared[di] |= 1 << mi
         self.sent_locations |= set(self.checked_locations)
         self.primed = True
-        note("Restored progress from the server: %d checks already recorded.",
-                    len(self.checked_locations))
+        note("Restored progress from the server: %d checks already recorded, %d story clear(s) of your own.",
+             len(self.checked_locations), len(self.own_clears))
+
+    def record_clears(self, ids: typing.Set[int]):
+        new = ids - self.own_clears
+        if not new:
+            return
+        self.own_clears |= new
+        value = {str(loc): 1 for loc in new}
+        self.stored_data[self.clears_key()] = dict(self.stored_data.get(self.clears_key()) or {}, **value)
+        asyncio.create_task(self.send_msgs([{
+            "cmd": "Set", "key": self.clears_key(), "default": {}, "want_reply": False,
+            "operations": [{"operation": "update", "value": value}]}]))
+
+    def releasable(self, found: typing.Set[int]) -> typing.Set[int]:
+        """Hold back a check for a mission or match whose unlock has not arrived; it goes out
+        once the unlock does, since the progress behind it is kept."""
+        out = set()
+        for loc in found:
+            unit = UNIT_OF_LOCATION.get(loc)
+            if unit is None or unit in self.granted_units:
+                out.add(loc)
+            elif loc not in self.held_said:
+                self.held_said.add(loc)
+                note("Holding %s until %s is unlocked.", LOCATION_NAME.get(loc, loc), unit)
+        return out
 
     def collect_trophy_checks(self, profile: int) -> typing.Set[int]:
         """Arcade and challenge checks, read from the records the gate never touches."""
@@ -568,6 +628,7 @@ class TS2GCContext(CommonContext):
 
     def collect_story_checks(self, profile: int) -> typing.Set[int]:
         """Story checks. Detection lives in gamestate so the dry run cannot drift."""
+        seen = set()
         for mission_index, difficulty, won in gamestate.poll_story_clears(
                 profile, self.level_completions):
             if not won:
@@ -576,6 +637,8 @@ class TS2GCContext(CommonContext):
                 continue
             for di in range(difficulty + 1):        # difficulties are cumulative
                 self.story_cleared[di] |= 1 << mission_index
+                seen.add(STORY_BASE + mission_index * 3 + di)
+        self.record_clears(seen)
         found = set()
         for di in range(3):
             for mi in range(len(data.STORY)):
@@ -1072,6 +1135,8 @@ async def game_loop(ctx: TS2GCContext):
                 continue
             if not ctx.primed:
                 ctx.seed_from_server()
+                if not ctx.primed:
+                    continue
             profile = ctx.profile_base()
             if profile is None:
                 continue
@@ -1121,7 +1186,7 @@ async def game_loop(ctx: TS2GCContext):
             found = (ctx.collect_trophy_checks(profile)
                      | ctx.collect_story_checks(profile)
                      | ctx.collect_objective_checks())
-            new = found - ctx.sent_locations
+            new = ctx.releasable(found - ctx.sent_locations)
             if new:
                 ctx.sent_locations |= new
                 await ctx.send_msgs([{"cmd": "LocationChecks", "locations": sorted(new)}])
