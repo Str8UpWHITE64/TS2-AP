@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 *.apworld
+!apworld/timesplitters2.apworld
 .idea/
 .venv/
 install/
