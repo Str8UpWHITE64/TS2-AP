@@ -77,6 +77,12 @@ AP_EVENT_NAMES = [name for (_, _, name) in data.TROPHY_EVENTS]
 AP_INDEX_OF_NAME = {name: i for i, name in enumerate(AP_EVENT_NAMES)}
 GAME_INDEX_OF_NAME = data.TROPHY_EVENT_INDEX                 # name -> game record index
 AP_TO_GAME = [GAME_INDEX_OF_NAME[n] for n in AP_EVENT_NAMES]
+# game index of an arcade match -> the game indices of every match in the league below it (none for the first league)
+LEAGUE_BELOW = {}
+_leagues = [[GAME_INDEX_OF_NAME[m] for series in matches.values() for m in series] for matches in data.ARCADE.values()]
+for _below, _this in zip(_leagues, _leagues[1:]):
+    for _ei in _this:
+        LEAGUE_BELOW[_ei] = tuple(_below)
 GAME_TO_AP = [AP_INDEX_OF_NAME[n] for n in data.TROPHY_TABLE_ORDER]
 assert sorted(AP_TO_GAME) == list(range(len(AP_EVENT_NAMES))), "event index mapping is not a bijection"
 
@@ -724,6 +730,16 @@ class TS2GCContext(CommonContext):
                 if other == game_index:
                     break
                 open_events.add(other)
+        # A Honorary or Elite series is also behind a league requirement: the game keeps it shut until every match of
+        # the league below carries a medal. Granting a match there therefore marks that whole league too, or the
+        # series stays locked in the menu however many of its matches were granted.
+        for game_index in self.granted_events():
+            open_events.update(LEAGUE_BELOW.get(game_index, ()))
+        # Challenge categories 3-6 carry a different requirement: N of the seven challenge categories must be complete,
+        # every match medalled at tier 1 (N is 1 to 4, read from the game's own table). Granting a match there marks
+        # the first N categories, which is the least that satisfies it.
+        for game_index in self.granted_events():
+            open_events.update(self.categories_needed(game_index))
         words = [0, 0, 0, 0]
         for ei in open_events:
             words[ei >> 5] |= 1 << (ei & 31)
@@ -932,6 +948,21 @@ class TS2GCContext(CommonContext):
             if event in grp:
                 return grp
         return [event]
+
+    def categories_needed(self, event: int) -> typing.Set[int]:
+        """The matches of the challenge categories an event's group requires complete (requirement type 5), or none.
+        Only a tier-1 requirement is met, because tier 1 is the one medal word the client writes."""
+        self.group_of(event)                       # fills the group cache
+        groups = TS2GCContext._group_cache
+        if not groups:
+            return set()
+        for gi, grp in enumerate(groups):
+            if event in grp:
+                p = gamestate.GROUP_TABLE + gi * gamestate.GROUP_STRIDE + 0x24
+                if u32(p) != 5 or u32(p + 8) != 1:
+                    return set()
+                return {e for other in groups[:u32(p + 4)] if other is not grp for e in other}
+        return set()
 
     async def shutdown(self):
         self.end_trap()
